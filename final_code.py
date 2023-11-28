@@ -39,7 +39,7 @@ def main():
         minima = argrelextrema(smoothed_y, np.less)[0]
         baseline = np.interp(np.arange(len(smoothed_y)), minima, smoothed_y[minima])
         baseline_removed_signal = x - baseline
-        tissue_peaks_baseline, _ = find_peaks(baseline_removed_signal, height=(500, 1500), distance=25000)
+        tissue_peaks_baseline, _ = find_peaks(baseline_removed_signal, height=(500, 5000), distance=25000)
         water_peaks_baseline, _ = find_peaks(baseline_removed_signal, height=(-50, 80), distance=25000)
         widths_baseline, widths_heights, widths_interval_left, widths_interval_right = peak_widths(baseline_removed_signal, tissue_peaks_baseline, rel_height=0.5)
         peak_width_lst.append(widths_baseline)
