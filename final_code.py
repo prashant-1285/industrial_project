@@ -4,9 +4,10 @@ import numpy as np
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 import os
-from scipy.signal import find_peaks, argrelextrema
+from scipy.signal import find_peaks, argrelextrema,peak_widths
 from scipy.ndimage import gaussian_filter1d
-
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
 
 
 chunk_size = 10 ** 7
@@ -17,7 +18,7 @@ water_peak=[]
 baseline_data=[]
 tissue_peaks_baselineremoved=[]
 water_peaks_baselineremoved=[]
-
+peak_width_lst=[]
 
 
 def main():
@@ -40,7 +41,8 @@ def main():
         baseline_removed_signal = x - baseline
         tissue_peaks_baseline, _ = find_peaks(baseline_removed_signal, height=(500, 1500), distance=25000)
         water_peaks_baseline, _ = find_peaks(baseline_removed_signal, height=(-50, 80), distance=25000)
-    
+        widths_baseline, widths_heights, widths_interval_left, widths_interval_right = peak_widths(baseline_removed_signal, tissue_peaks_baseline, rel_height=0.5)
+        peak_width_lst.append(widths_baseline)
     
         # Adjust the indices of peaks based on the cumulative length on normal peaks
         adjusted_tissue_peaks = [tissue_peak + cumulative_length for tissue_peak in tissue_peaks]
@@ -83,6 +85,70 @@ def visualize():
         plt.close('all')
         print("saving",i)
         
+def kmeans_cluster():
+    all_peak_features = []
+
+    # Append columns from the loop to all_peak_features
+    for i in range(len(save_data)):  # Assuming the range is up to 3 based on your example
+        peak_features = np.column_stack((tissue_peaks_baselineremoved[i], baseline_data[i][tissue_peaks_baselineremoved[i]],peak_width_lst[i]))
+        all_peak_features.append(peak_features)
+
+    # Concatenate all the appended columns into a single array
+    result = np.concatenate(all_peak_features, axis=0)
+    # Normalize the features
+    scaler = StandardScaler()
+    normalized_features = scaler.fit_transform(result)
+    print("fitted data for k means")
+    # Choose the number of clusters
+    k = 3
+
+    # Apply KMeans clustering to the entire dataset
+    kmeans = KMeans(n_clusters=k, random_state=42)
+    kmeans.fit(normalized_features)
+    labels = kmeans.labels_
+
+
+    path = "images"
+    # Check whether the specified path exists or not
+    isExist = os.path.exists(path)
+    if not isExist:
+        # Create a new directory because it does not exist
+        os.makedirs(path)
+    # # Loop through each chunk
+    for chunk_num in range(len(save_data)):
+        # Calculate the total length of data from previous chunks
+        previous_chunk_length = sum(len(tissue_peaks_baselineremoved[i]) for i in range(chunk_num))
+
+        # Filter data for the current chunk
+        chunk_data = result[previous_chunk_length:previous_chunk_length + len(tissue_peaks_baselineremoved[chunk_num])]
+
+        # Apply the labels from the global clustering to the chunk
+        chunk_labels = labels[previous_chunk_length:previous_chunk_length + len(tissue_peaks_baselineremoved[chunk_num])]
+
+        
+        plt.ylim(-700, 4500)
+        plt.plot(baseline_data[chunk_num], label='Signal')
+        plt.plot(tissue_peaks_baselineremoved[chunk_num], baseline_data[chunk_num][tissue_peaks_baselineremoved[chunk_num]], 'rx', label='Detected Peaks', markersize=10)
+        plt.title(f'Peak Detection and K-Means Clustering - Chunk {chunk_num + 1}')
+        plt.legend()
+        # Display different colors for different clusters
+        for cluster_num in range(k):
+            cluster_points = chunk_data[chunk_labels == cluster_num]
+            plt.plot(cluster_points[:, 0], cluster_points[:, 1], 'o', label=f'Cluster {cluster_num + 1}')
+        
+        plt.legend()
+        plt.savefig('images/final_baselineremoved_clustered{}.png'.format(chunk_num))
+       
+        plt.clf()
+        plt.close('all')
+        print("saving clustered",chunk_num)
+
+
+
+
+
+
 if __name__ == '__main__':
     main()
     visualize()
+    kmeans_cluster()
