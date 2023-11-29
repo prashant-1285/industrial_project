@@ -12,19 +12,14 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 
 
-chunk_size = 10 ** 7
-save_data = []
-tissue_peak = []
-water_peak=[]
-baseline_data=[]
-tissue_peaks_baselineremoved=[]
-water_peaks_baselineremoved=[]
-peak_width_lst=[]
-tissue_peak_info_csv=[]
-water_peak_info_csv=[]
+sampling_rate = 5 * 10**4
 
-def run_analisys():
-    cumulative_length = 0  # Variable to keep track of the cumulative length of chunks
+def run_analisys(datapath, chunk_size = 10**7):
+    reader = pd.read_csv(datapath, iterator=True, chunksize=chunk_size) #'../2Gb signal.csv'
+
+    tissue_data = []
+    water_data = []
+
     for i, chunk in enumerate(reader):
         print("Processing data, chunk number", i)
         x = chunk['adc2']
@@ -43,109 +38,121 @@ def run_analisys():
         water_peaks_baseline, _ = find_peaks(baseline_removed_signal, height=(-50, 80), distance=25000)
         
         # Get the peak widts, its starting left and ending right coordinates
-        widths_baseline, widths_heights, widths_interval_left, widths_interval_right = peak_widths(baseline_removed_signal, tissue_peaks_baseline, rel_height=0.5)
-        water_widths_baseline, water_widths_heights, water_widths_interval_left, water_widths_interval_right = peak_widths(baseline_removed_signal, water_peaks_baseline, rel_height=0.5)
+        _, _, tissue_intervals_left, tissue_intervals_right = peak_widths(baseline_removed_signal, tissue_peaks_baseline, rel_height=0.5)
+        _, _, water_intervals_left, water_intervals_right = peak_widths(baseline_removed_signal, water_peaks_baseline, rel_height=0.5)
         
-        peak_width_lst.append(widths_baseline)
-        tissue_peak_info_csv.append((widths_interval_left,widths_interval_right))
-        water_peak_info_csv.append((water_widths_interval_left,water_widths_interval_right))
+        # Convert chunk coordinates into time coordinates
+        transform = lambda x: (x + i * chunk_size) / sampling_rate
+
+        for left, right in zip(tissue_intervals_left, tissue_intervals_right):
+            tissue_data.append((
+                transform(left), 
+                transform(right),
+                'tissue'
+            ))
+
+        # for left, right in zip(water_intervals_left, water_intervals_right):
+        #     water_data.append((
+        #         transform(left), 
+        #         transform(right),
+        #         'water'
+        #     ))
+        break
     
-        # Adjust the indices of peaks based on the cumulative length on normal peaks
-        adjusted_tissue_peaks = [tissue_peak + cumulative_length for tissue_peak in tissue_peaks]
-        adjusted_water_peaks = [water_peak + cumulative_length for water_peak in water_peaks]
-
-        # Adjust the indices of peaks based on the cumulative length on  baseline removed peaks
-        adjusted_tissue_peaks_br = [tissue_peak_br + cumulative_length for tissue_peak_br in tissue_peaks_baseline]
-        adjusted_water_peaks_br = [water_peak_br + cumulative_length for water_peak_br in water_peaks_baseline]
-
-        # append the saved data and baselineremoved data
-        save_data.append(x)
-        baseline_data.append(baseline_removed_signal)
-
-        # Append on the normal data (without baseline removal)
-        tissue_peak.append(adjusted_tissue_peaks)
-        water_peak.append(adjusted_water_peaks)
-
-        # Append on the baseline reomoved data
-        tissue_peaks_baselineremoved.append(adjusted_tissue_peaks_br)
-        water_peaks_baselineremoved.append(adjusted_water_peaks_br)
-
-        cumulative_length += len(chunk)  # Update the cumulative length
+    if len(tissue_data) == 0:
+        peaks_combined = sorted(water_data)
+    elif len(water_data) == 0:
+        peaks_combined = sorted(tissue_data)
+    else:
+        peaks_combined = sorted(tissue_data + water_data)
+    
+    return peaks_combined
 
 
-def save_analysis_data(path):
-    #TODO
-    print(path)
+# Saving analysis data to a file
+def save_analysis_data(peaks_combined, path):
+    # format to 6 decimal digits
+    peaks_combined_format = map(lambda p: (format(p[0], '.6f'), format(p[1], '.6f'), p[2]), peaks_combined)
+
+    df = pd.DataFrame(peaks_combined_format)
+    df.to_csv(path, header=['startTime', 'endTime', 'label'], index=False)
 
 
+# Reading analysis data from a file
 def read_analysis_data(path):
-    #TODO
-    print(path)
+    peaks_combined = []
 
+    with open(path, 'w') as f:
+        data = f.read()
 
-def get_csv_data():
-    """
-    Take the all the peaks of tissue and water and convert their starting and ending point of the peaks into the following format.
-    For example: combined_peaks:[(0.00100,0.00200,'water'),(0.00400,0.00600,'tissue')]
-    """
-    tissue_csv_list=[]
-    water_csv_list=[]
-    for item in tissue_peak_info_csv:
-        for i in range(len(item[0])):
-            tissue_csv_list.append((item[0][i], item[1][i],'tissue'))
+        for line in data.split('\n'):
+            if len(line) == 0:
+                break
+            
+            # extract start, end and material of the peak from each line
+            start, end, material = line.split(',')
+            peak = (float(start), float(end), material)
+            peaks_combined.append(peak)
     
-    for item in water_peak_info_csv:
-        for i in range(len(item[0])):
-            water_csv_list.append((item[0][i], item[1][i],'water'))
-    #print("tissue peak info ",tissue_peak_info_csv)
-    #print("tissue peak info correct format",tissue_csv_list)
-    #print("water peak info ",water_peak_info_csv)
-    #print("water peak info correct format ",water_csv_list)
-    print("length of water peaks",len(water_csv_list))
-    print("length of tissue peaks",len(tissue_csv_list))
-
-    # Combine the peaks serially
-    combined_peaks = []
-
-    # Merge peaks based on their order
-    i, j = 0, 0
-    while i < len(water_csv_list) and j < len(tissue_csv_list):
-        water_start, water_end, water_label = water_csv_list[i]
-        tissue_start, tissue_end, tissue_label = tissue_csv_list[j]
-
-        # Compare the start points of water and tissue peaks
-        if water_start < tissue_start:
-            combined_peaks.append((water_start, water_end, water_label))
-            i += 1
-        else:
-            combined_peaks.append((tissue_start, tissue_end, tissue_label))
-            j += 1
-    # Append any remaining peaks from water or tissue
-    combined_peaks.extend(water_csv_list[i:])
-    combined_peaks.extend(tissue_csv_list[j:])
-
-    
-    print("length of combined peaks",len(combined_peaks))
-    print("first few elemetns",combined_peaks[:20])
+    return peaks_combined
 
 
-def visualize(path):
+def visualize_analysis(datapath, peaks_combined, path, chunk_size = 10**5):
+    reader = pd.read_csv(datapath, iterator=True, chunksize=chunk_size) #'../2Gb signal.csv'
+
     # Check whether the specified path exists or not
     isExist = os.path.exists(path)
     if not isExist:
         # Create a new directory because it does not exist
         os.makedirs(path)
+
     # Perform visualization on baseline removed data
     print("Saving visualization data:")
-    for i in tqdm(range(len(save_data))):
-        plt.ylim(-1000, 4500)
-        plt.plot(baseline_data[i])
-        plt.plot(tissue_peaks_baselineremoved[i], baseline_data[i][tissue_peaks_baselineremoved[i]], "o", color='red', label='Tissue Peaks')
-        plt.scatter(water_peaks_baselineremoved[i], baseline_data[i][water_peaks_baselineremoved[i]], color='green', label='Water Peaks', s=25)
+    iterator = 0
+    for i, chunk in enumerate(reader):
+        print("Visualizing data, chunk number", i)
+
+        signal = chunk['adc2']
+
+        plt.ylim(0, 4095)
+        index = [s / sampling_rate for s in list(signal.index)]
+        plt.plot(index, signal)
+
+        has_tissue = False
+        while True:
+            # print(iterator, peaks_combined[iterator])
+            # print(index[0], index[-1])
+            if iterator >= len(peaks_combined):
+                break
+
+            start, end, material = peaks_combined[iterator]
+
+            if start > index[-1]:
+                break
+
+            if end < index[0]:
+                iterator += 1
+                continue
+
+            if end > index[-1]:
+                end = index[-1]
+
+            if start < index[0]:
+                start = index[0]
+
+            if material == 'tissue':
+                plt.axvspan(start, end, 0, 4095, facecolor="g", alpha=0.1)
+                has_tissue = True
+
+            iterator += 1
+
+
+        # plt.plot(tissue_peaks_baselineremoved[i], baseline_data[i][tissue_peaks_baselineremoved[i]], "o", color='red', label='Tissue Peaks')
+        # plt.scatter(water_peaks_baselineremoved[i], baseline_data[i][water_peaks_baselineremoved[i]], color='green', label='Water Peaks', s=25)
         # plt.plot(water_peaks_baselineremoved[i], baseline_data[i][water_peaks_baselineremoved[i]], "o", color='green', label='Water Peaks')
 
-        # plt.savefig('images/final_baselineremoved_{}.png'.format(i))
-        plt.savefig(os.path.join(path, 'final_baselineremoved_{}.png'.format(i)))
+        if has_tissue:
+            plt.savefig(os.path.join(path, 'final_baselineremoved_{}.png'.format(i)))
         plt.clf()
         plt.close('all')
 
@@ -219,7 +226,7 @@ def kmeans_cluster():
     "--analyze",
     is_flag=True,
     show_default=True,
-    default=True,
+    default=False,
     help="Whether to perform the analysis of the signal",
 )
 @click.option(
@@ -237,23 +244,23 @@ def kmeans_cluster():
     help="Whether to save/overwrite anaylysis results into a file",
 )
 @click.option(
-    "--vis_path", default="images", show_default=True, help="If provided, visualization will be saved to this file", type=str
+    "--vis_path", default="images", show_default=True, help="If provided, visualization will be saved to this folder", type=str
 )
 def run(datapath, savepath, analyze, visualize, save, vis_path):
-    global reader
-    reader = pd.read_csv(datapath, iterator=True, chunksize=chunk_size) #'../2Gb signal.csv'
+    print(datapath, savepath, analyze, visualize, save, vis_path)
+
     if analyze:
-        run_analisys()
-        # kmeans_cluster()
+        peaks_combined = run_analisys(datapath)
 
         if save:
-            save_analysis_data(savepath)
+            save_analysis_data(peaks_combined, savepath)
     else:
-        read_analysis_data(savepath)
+        peaks_combined = read_analysis_data(savepath)
 
     if visualize:
-        visualize(vis_path)
+        visualize_analysis(datapath, peaks_combined, vis_path)
 
 
 if __name__ == '__main__':
+    # python final_code.py --datapath="../2Gb signal.csv" --savepath="../tmp1.csv" --analyze --save --visualize --vis_path="./images"
     run()
