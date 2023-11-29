@@ -1,8 +1,10 @@
-
+import click
+from tqdm import tqdm
 import pandas as pd
 import numpy as np
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
+plt.figure(figsize=(15, 6), dpi=80)
 import os
 from scipy.signal import find_peaks, argrelextrema,peak_widths
 from scipy.ndimage import gaussian_filter1d
@@ -11,7 +13,6 @@ from sklearn.cluster import KMeans
 
 
 chunk_size = 10 ** 7
-reader = pd.read_csv('2Gb signal.csv', iterator=True, chunksize=chunk_size)
 save_data = []
 tissue_peak = []
 water_peak=[]
@@ -21,16 +22,14 @@ water_peaks_baselineremoved=[]
 peak_width_lst=[]
 
 
-def main():
+def run_analisys():
     cumulative_length = 0  # Variable to keep track of the cumulative length of chunks
     for i, chunk in enumerate(reader):
-        print("datas",i)
+        print("Processing data, chunk number", i)
         x = chunk['adc2']
         # Tissue and water peaks before baseline removal
         tissue_peaks, properties = find_peaks(x, height=(1200, 4000), distance=25000)
         water_peaks, properties = find_peaks(x, height=(635, 755), distance=25000)
-        
-    
         
         #Processed Tissue and WaterPeak After Baseline Removal 
         smoothed_y = gaussian_filter1d(x, sigma=5)
@@ -66,25 +65,39 @@ def main():
 
         cumulative_length += len(chunk)  # Update the cumulative length
 
-def visualize():
-    path = "images"
+
+def save_analysis_data(path):
+    #TODO
+    print(path)
+
+
+def read_analysis_data(path):
+    #TODO
+    print(path)
+
+
+def visualize(path):
     # Check whether the specified path exists or not
     isExist = os.path.exists(path)
     if not isExist:
         # Create a new directory because it does not exist
         os.makedirs(path)
     # Perform visualization on baseline removed data
-    for i in range(len(save_data)):
+    print("Saving visualization data:")
+    for i in tqdm(range(len(save_data))):
         plt.ylim(-1000, 4500)
         plt.plot(baseline_data[i])
         plt.plot(tissue_peaks_baselineremoved[i], baseline_data[i][tissue_peaks_baselineremoved[i]], "o", color='red', label='Tissue Peaks')
-        plt.plot(water_peaks_baselineremoved[i], baseline_data[i][water_peaks_baselineremoved[i]], "o", color='green', label='water Peaks')
+        plt.scatter(water_peaks_baselineremoved[i], baseline_data[i][water_peaks_baselineremoved[i]], color='green', label='Water Peaks', s=25)
+        # plt.plot(water_peaks_baselineremoved[i], baseline_data[i][water_peaks_baselineremoved[i]], "o", color='green', label='Water Peaks')
 
-        plt.savefig('images/final_baselineremoved_{}.png'.format(i))
+        # plt.savefig('images/final_baselineremoved_{}.png'.format(i))
+        plt.savefig(os.path.join(path, 'final_baselineremoved_{}.png'.format(i)))
         plt.clf()
         plt.close('all')
-        print("saving",i)
-        
+
+
+# Let's put it aside for some time, will finish if we have time 
 def kmeans_cluster():
     all_peak_features = []
 
@@ -144,11 +157,50 @@ def kmeans_cluster():
         print("saving clustered",chunk_num)
 
 
+@click.command()
+@click.option("--datapath", required=True, help="Path to the signal file", type=str)
+@click.option(
+    "--savepath", required=True, help="Path to the save/read the analysis data", type=str
+)
+@click.option(
+    "--analyze",
+    is_flag=True,
+    show_default=True,
+    default=True,
+    help="Whether to perform the analysis of the signal",
+)
+@click.option(
+    "--visualize",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="The person to greet.",
+)
+@click.option(
+    "--save",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Whether to save/overwrite anaylysis results into a file",
+)
+@click.option(
+    "--vis_path", default="images", show_default=True, help="If provided, visualization will be saved to this file", type=str
+)
+def run(datapath, savepath, analyze, visualize, save, vis_path):
+    global reader
+    reader = pd.read_csv(datapath, iterator=True, chunksize=chunk_size) #'../2Gb signal.csv'
+    if analyze:
+        run_analisys()
+        # kmeans_cluster()
 
+        if save:
+            save_analysis_data(savepath)
+    else:
+        read_analysis_data(savepath)
 
+    if visualize:
+        visualize(vis_path)
 
 
 if __name__ == '__main__':
-    main()
-    visualize()
-    kmeans_cluster()
+    run()
