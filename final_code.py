@@ -20,7 +20,8 @@ baseline_data=[]
 tissue_peaks_baselineremoved=[]
 water_peaks_baselineremoved=[]
 peak_width_lst=[]
-
+tissue_peak_info_csv=[]
+water_peak_info_csv=[]
 
 def run_analisys():
     cumulative_length = 0  # Variable to keep track of the cumulative length of chunks
@@ -40,8 +41,14 @@ def run_analisys():
         baseline_removed_signal = x - baseline
         tissue_peaks_baseline, _ = find_peaks(baseline_removed_signal, height=(500, 5000), distance=25000)
         water_peaks_baseline, _ = find_peaks(baseline_removed_signal, height=(-50, 80), distance=25000)
+        
+        # Get the peak widts, its starting left and ending right coordinates
         widths_baseline, widths_heights, widths_interval_left, widths_interval_right = peak_widths(baseline_removed_signal, tissue_peaks_baseline, rel_height=0.5)
+        water_widths_baseline, water_widths_heights, water_widths_interval_left, water_widths_interval_right = peak_widths(baseline_removed_signal, water_peaks_baseline, rel_height=0.5)
+        
         peak_width_lst.append(widths_baseline)
+        tissue_peak_info_csv.append((widths_interval_left,widths_interval_right))
+        water_peak_info_csv.append((water_widths_interval_left,water_widths_interval_right))
     
         # Adjust the indices of peaks based on the cumulative length on normal peaks
         adjusted_tissue_peaks = [tissue_peak + cumulative_length for tissue_peak in tissue_peaks]
@@ -74,6 +81,52 @@ def save_analysis_data(path):
 def read_analysis_data(path):
     #TODO
     print(path)
+
+
+def get_csv_data():
+    """
+    Take the all the peaks of tissue and water and convert their starting and ending point of the peaks into the following format.
+    For example: combined_peaks:[(0.00100,0.00200,'water'),(0.00400,0.00600,'tissue')]
+    """
+    tissue_csv_list=[]
+    water_csv_list=[]
+    for item in tissue_peak_info_csv:
+        for i in range(len(item[0])):
+            tissue_csv_list.append((item[0][i], item[1][i],'tissue'))
+    
+    for item in water_peak_info_csv:
+        for i in range(len(item[0])):
+            water_csv_list.append((item[0][i], item[1][i],'water'))
+    #print("tissue peak info ",tissue_peak_info_csv)
+    #print("tissue peak info correct format",tissue_csv_list)
+    #print("water peak info ",water_peak_info_csv)
+    #print("water peak info correct format ",water_csv_list)
+    print("length of water peaks",len(water_csv_list))
+    print("length of tissue peaks",len(tissue_csv_list))
+
+    # Combine the peaks serially
+    combined_peaks = []
+
+    # Merge peaks based on their order
+    i, j = 0, 0
+    while i < len(water_csv_list) and j < len(tissue_csv_list):
+        water_start, water_end, water_label = water_csv_list[i]
+        tissue_start, tissue_end, tissue_label = tissue_csv_list[j]
+
+        # Compare the start points of water and tissue peaks
+        if water_start < tissue_start:
+            combined_peaks.append((water_start, water_end, water_label))
+            i += 1
+        else:
+            combined_peaks.append((tissue_start, tissue_end, tissue_label))
+            j += 1
+    # Append any remaining peaks from water or tissue
+    combined_peaks.extend(water_csv_list[i:])
+    combined_peaks.extend(tissue_csv_list[j:])
+
+    
+    print("length of combined peaks",len(combined_peaks))
+    print("first few elemetns",combined_peaks[:20])
 
 
 def visualize(path):
