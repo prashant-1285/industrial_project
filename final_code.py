@@ -19,8 +19,10 @@ def run_analisys(datapath, chunk_size=10 ** 7):
 
     tissue_data = []
     water_data = []
+    cumulative_length = 0
 
     for i, chunk in enumerate(reader):
+        
         print("Processing data, chunk number", i)
         x = chunk["adc2"]
         # Tissue and water peaks before baseline removal
@@ -38,9 +40,17 @@ def run_analisys(datapath, chunk_size=10 ** 7):
             baseline_removed_signal, height=(500, 5000), distance=25000
         )
         water_peaks_baseline, _ = find_peaks(
-            baseline_removed_signal, height=(-50, 80), distance=25000
+            baseline_removed_signal, height=(40, 100), distance=100000
         )
 
+      
+        water_data_signal=x[water_peaks_baseline+cumulative_length]
+        for ite,value in water_data_signal.items(): 
+                if value>1000:
+                        index=np.where(water_peaks_baseline==ite)[0]
+                        water_peaks_baseline=np.delete(water_peaks_baseline,index)
+        
+        cumulative_length += len(chunk)
         # Get the peak widts, its starting left and ending right coordinates
         _, _, tissue_intervals_left, tissue_intervals_right = peak_widths(
             baseline_removed_signal, tissue_peaks_baseline, rel_height=0.5
@@ -160,6 +170,10 @@ def visualize_analysis(datapath, peaks_combined, path, chunk_size=10 ** 6, lines
             # plot the tissue peaks
             if material == "tissue":
                 axarr[plot_index].axvspan(start, end, 0, 4095, facecolor="g", alpha=0.1)
+
+            # plot the water peaks
+            if material == "water":
+                axarr[plot_index].axvspan(start, end, 0, 4095, facecolor="r", alpha=0.1)
 
             # go to the next peak
             iterator += 1
