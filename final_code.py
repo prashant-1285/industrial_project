@@ -11,10 +11,10 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 
 
-sampling_rate = 5 * 10 ** 4
+sampling_rate = 5 * 10**4
 
 
-def run_analisys(datapath, chunk_size=10 ** 7):
+def run_analisys(datapath, chunk_size=10**7):
     reader = pd.read_csv(datapath, iterator=True, chunksize=chunk_size)
 
     tissue_data = []
@@ -22,7 +22,6 @@ def run_analisys(datapath, chunk_size=10 ** 7):
     cumulative_length = 0
 
     for i, chunk in enumerate(reader):
-        
         print("Processing data, chunk number", i)
         x = chunk["adc2"]
         # Tissue and water peaks before baseline removal
@@ -37,19 +36,18 @@ def run_analisys(datapath, chunk_size=10 ** 7):
         baseline = np.interp(np.arange(len(smoothed_y)), minima, smoothed_y[minima])
         baseline_removed_signal = x - baseline
         tissue_peaks_baseline, _ = find_peaks(
-            baseline_removed_signal, height=(500, 5000), distance=25000
+            baseline_removed_signal, height=(500, 5000), distance=5000
         )
         water_peaks_baseline, _ = find_peaks(
-            baseline_removed_signal, height=(40, 100), distance=100000
+            baseline_removed_signal, height=(40, 100), distance=20000
         )
 
-      
-        water_data_signal=x[water_peaks_baseline+cumulative_length]
-        for ite,value in water_data_signal.items(): 
-                if value>1000:
-                        index=np.where(water_peaks_baseline==ite)[0]
-                        water_peaks_baseline=np.delete(water_peaks_baseline,index)
-        
+        water_data_signal = x[water_peaks_baseline + cumulative_length]
+        for ite, value in water_data_signal.items():
+            if value > 1000:
+                index = np.where(water_peaks_baseline == ite)[0]
+                water_peaks_baseline = np.delete(water_peaks_baseline, index)
+
         cumulative_length += len(chunk)
         # Get the peak widts, its starting left and ending right coordinates
         _, _, tissue_intervals_left, tissue_intervals_right = peak_widths(
@@ -113,7 +111,7 @@ def read_analysis_data(path):
 
 
 # Visualize the result of the analysis (computed or read from a file)
-def visualize_analysis(datapath, peaks_combined, path, chunk_size=10 ** 6, lines=5):
+def visualize_analysis(datapath, peaks_combined, path, chunk_size=10**6, lines=5):
     reader = pd.read_csv(datapath, iterator=True, chunksize=chunk_size)
 
     # Check whether the specified path exists or not
