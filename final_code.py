@@ -45,7 +45,7 @@ def run_analisys(datapath, chunk_size=10**7):
         water_data_signal = x[water_peaks_baseline + cumulative_length]
         for ite, value in water_data_signal.items():
             if value > 1000:
-                index = np.where(water_peaks_baseline == ite)[0]
+                index = np.where(water_peaks_baseline+cumulative_length == ite)[0]
                 water_peaks_baseline = np.delete(water_peaks_baseline, index)
 
         cumulative_length += len(chunk)
